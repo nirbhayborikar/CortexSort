@@ -75,10 +75,17 @@ class VisionLanguagePandaSimulation:
         self.frame_callback = None  # set by app.py to push live frames
         
         # Camera parameters (wider resolution for better field of view)
-        self.camera_position = [0.8, 0.0, 1.2]  # Camera position above the table
-        self.camera_target = [0.5, 0.0, 0.65]   # Looking at table center
-        self.camera_width = 800  # Increased width for wider view
+        self.camera_width = 800
         self.camera_height = 480
+        self.camera_presets = {
+            'default':    {'position': [0.8, 0.0, 1.2],   'target': [0.4, 0.0, 0.65]},
+            'top':        {'position': [0.4, 0.0, 1.8],   'target': [0.4, 0.0, 0.65]},
+            'front':      {'position': [0.4, 1.3, 0.85],  'target': [0.4, 0.0, 0.65]},
+            'right':      {'position': [1.4, 0.0, 0.85],  'target': [0.4, 0.0, 0.65]},
+            'isometric':  {'position': [1.0, 0.8, 1.1],   'target': [0.4, 0.0, 0.65]},
+        }
+        self.camera_position = self.camera_presets['default']['position']
+        self.camera_target = self.camera_presets['default']['target']
         
         # Workspace positions
         self.home_position = [0.3, 0.0, 0.85]
@@ -366,6 +373,15 @@ class VisionLanguagePandaSimulation:
                                    cameraPitch=-25,  # Slightly less steep angle
                                    cameraTargetPosition=[0.5, 0, 0.5])
         
+    def set_camera_view(self, preset_name):
+        """Switch camera to a named preset (default, top, front, right, isometric)."""
+        if preset_name in self.camera_presets:
+            p = self.camera_presets[preset_name]
+            self.camera_position = p['position']
+            self.camera_target = p['target']
+            return preset_name
+        return None
+
     def capture_camera_image(self):
         """
         Capture an image from the robot's perspective using PyBullet's camera.

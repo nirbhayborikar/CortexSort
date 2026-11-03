@@ -19,12 +19,14 @@
         <div class="msg bot">
           <div class="bubble">
             Welcome! I control a Franka Panda arm using CLIP vision-language matching.<br><br>
-            <b>Try these commands:</b><br>
-            &bull; <i>pick the red cube</i><br>
-            &bull; <i>grab something blue</i><br>
-            &bull; <i>pick yellow cylinder and place in green zone</i><br>
-            &bull; <i>sort all objects by color</i><br><br>
-            The simulation view is on the right.
+            <b>Commands:</b><br>
+            &bull; <i>pick the red cube</i> — CLIP-matched selection<br>
+            &bull; <i>pick yellow cylinder and place in green basket</i><br>
+            &bull; <i>pick cube from yellow basket and put in green basket</i><br>
+            &bull; <i>sort all objects by color</i> — auto-sort everything<br>
+            &bull; <i>go home</i> — return to home position<br>
+            &bull; <i>stop</i> — emergency stop<br><br>
+            Use the camera buttons below the sim to change the view angle.
           </div>
         </div>
       </div>
@@ -50,8 +52,16 @@
       <div id="sim-view">
         <img id="sim-feed" src="/api/video_feed" alt="Simulation feed" />
       </div>
+      <div id="camera-bar">
+        <span class="cam-label">Camera:</span>
+        <button class="cam-btn active" onclick="setCamera('default', this)">Default</button>
+        <button class="cam-btn" onclick="setCamera('top', this)">Top</button>
+        <button class="cam-btn" onclick="setCamera('front', this)">Front</button>
+        <button class="cam-btn" onclick="setCamera('right', this)">Right</button>
+        <button class="cam-btn" onclick="setCamera('isometric', this)">Isometric</button>
+      </div>
       <div id="sim-footer">
-        PyBullet &middot; Franka Panda &middot; CLIP ViT-B/32 &middot; 5 objects &middot; 4 zones
+        PyBullet &middot; Franka Panda &middot; CLIP ViT-B/32 &middot; 5 objects &middot; 4 baskets
       </div>
     </div>
   </div>
@@ -129,6 +139,18 @@
       const d = document.createElement("div");
       d.textContent = s;
       return d.innerHTML;
+    }
+
+    async function setCamera(view, btn) {
+      document.querySelectorAll(".cam-btn").forEach(b => b.classList.remove("active"));
+      if (btn) btn.classList.add("active");
+      try {
+        await fetch("/api/camera", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ view }),
+        });
+      } catch (err) { /* silent */ }
     }
 
     function formatReply(text) {
