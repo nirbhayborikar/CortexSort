@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CortexSort — VLM Robot Control</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- LEFT: Chat panel -->
+    <div id="chat-panel">
+      <div id="chat-header">
+        <h1>CortexSort</h1>
+        <span class="subtitle">CLIP-Guided Robotic Manipulation</span>
+      </div>
+
+      <div id="chat-messages">
+        <div class="msg bot">
+          <div class="bubble">
+            Welcome! I control a Franka Panda arm using CLIP vision-language matching.<br><br>
+            <b>Try these commands:</b><br>
+            &bull; <i>pick the red cube</i><br>
+            &bull; <i>grab something blue</i><br>
+            &bull; <i>pick yellow cylinder and place in green zone</i><br>
+            &bull; <i>sort all objects by color</i><br><br>
+            The simulation view is on the right.
+          </div>
+        </div>
+      </div>
+
+      <div id="chat-input-area">
+        <input
+          id="chat-input"
+          type="text"
+          placeholder="Type a command... e.g. pick the red cube"
+          autocomplete="off"
+        />
+        <button id="send-btn" onclick="sendMessage()">Send</button>
+        <button id="reset-btn" onclick="resetSim()" title="Reset simulation">↺</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: Simulation view -->
+    <div id="sim-panel">
+      <div id="sim-header">
+        <span>Live Simulation</span>
+        <span id="sim-status" class="status-dot ready">● Ready</span>
+      </div>
+      <div id="sim-view">
+        <img id="sim-feed" src="/api/video_feed" alt="Simulation feed" />
+      </div>
+      <div id="sim-footer">
+        PyBullet &middot; Franka Panda &middot; CLIP ViT-B/32 &middot; 5 objects &middot; 4 zones
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const input = document.getElementById("chat-input");
+    const messages = document.getElementById("chat-messages");
+    const sendBtn = document.getElementById("send-btn");
+    const statusDot = document.getElementById("sim-status");
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    function appendMessage(role, html) {
+      const div = document.createElement("div");
+      div.className = "msg " + role;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = html;
+      div.appendChild(bubble);
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    function setStatus(text, cls) {
+      statusDot.textContent = "● " + text;
+      statusDot.className = "status-dot " + cls;
+    }
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      appendMessage("user", escapeHtml(text));
+      input.value = "";
+      sendBtn.disabled = true;
+      setStatus("Working...", "busy");
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: text }),
+        });
+        const data = await res.json();
+        appendMessage("bot", formatReply(data.reply || "No response."));
+      } catch (err) {
+        appendMessage("bot", "<span class='error'>Connection error: " + err.message + "</span>");
+      }
+
+      sendBtn.disabled = false;
+      setStatus("Ready", "ready");
+      input.focus();
+    }
+
+    async function resetSim() {
+      setStatus("Resetting...", "busy");
+      sendBtn.disabled = true;
+      try {
+        const res = await fetch("/api/reset", { method: "POST" });
+        const data = await res.json();
+        appendMessage("bot", formatReply(data.reply));
+      } catch (err) {
+        appendMessage("bot", "<span class='error'>Reset failed: " + err.message + "</span>");
+      }
+      sendBtn.disabled = false;
+      setStatus("Ready", "ready");
+    }
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function formatReply(text) {
+      // Convert markdown-style bold and italic
+      let html = escapeHtml(text);
+      html = html.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+      html = html.replace(/\*(.+?)\*/g, "<i>$1</i>");
+      html = html.replace(/\n/g, "<br>");
+      // Preserve monospace for score lines
+      html = html.replace(/(█+)/g, '<span class="bar">$1</span>');
+      return html;
+    }
+  </script>
+</body>
+</html>

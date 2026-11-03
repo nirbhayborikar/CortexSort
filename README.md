@@ -1,159 +1,174 @@
-# PyBullet Robotic Arm Simulation with Vision-Language Models
+# CortexSort
 
-A Python simulation that combines PyBullet robotic arm control with zero-shot image-text matching capabilities using the CLIP vision-language model. This project was created as part of my exploration into applying vision-language models in robotics.
+### Chat-Driven Robotic Manipulation with Zero-Shot Vision-Language Matching
 
-<p align="center">
-  <img src="https://github.com/user-attachments/assets/8edd7f96-cdcd-4495-b8e8-9ef2164e3d8a" alt="vlm (online-video-cutter" width="1000"/>
-</p>
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+[![PyBullet](https://img.shields.io/badge/PyBullet-Sim-orange.svg)](https://pybullet.org/)
+[![CLIP ViT-B/32](https://img.shields.io/badge/CLIP-ViT--B%2F32-green.svg)](https://openai.com/research/clip)
+[![Flask](https://img.shields.io/badge/Flask-Web%20UI-lightgrey.svg)](https://flask.palletsprojects.com/)
 
-## Overview
+> Type **"pick the red cube"** in a chat window — watch the robot do it in real time.
 
-This project demonstrates:
-- **Physics-based robotic arm simulation** using PyBullet
-- **Vision-guided object selection** using CLIP vision-language model
-- **Intelligent pick and place operations** based on text prompts
+---
 
-The robot captures images from its camera, analyzes them using CLIP, selects objects based on text descriptions, and performs pick-and-place operations, including color sorting and interactive placement.
+## What This Does
 
+CortexSort pairs a **Franka Panda robot arm** (simulated in PyBullet) with **OpenAI CLIP** for zero-shot object selection. You describe what you want in natural language, CLIP matches your text to camera crops of each object, and the robot picks the best match and sorts it into a color zone.
 
-## Implementation Videos
-1) VLM interaction:
+Two ways to use it:
 
+| Mode | Command | Interface |
+|:---|:---|:---|
+| **Web UI** | `python3 app.py` | Split-screen: chat on left, live sim on right |
+| **Terminal** | `python3 cortex_cli.py` | Classic `input()` prompt in the terminal |
 
-https://github.com/user-attachments/assets/17893bf4-5b80-47f8-9a8a-8a106cedf039
+---
 
+## Web UI
 
+```
+┌─────────────────────────┬──────────────────────────────┐
+│  Chat Window            │  Live Simulation             │
+│                         │                              │
+│  You: pick red cube     │  ┌────────────────────────┐  │
+│  Bot: CLIP scores:      │  │                        │  │
+│    red_cube     0.41 ██ │  │   [PyBullet camera     │  │
+│    blue_cube    0.18 █  │  │    MJPEG stream at     │  │
+│    ...                  │  │    ~10 fps]             │  │
+│  Selected red_cube      │  │                        │  │
+│  Placed in Red Zone.    │  └────────────────────────┘  │
+│                         │                              │
+│  [___Type here___] Send │  PyBullet · Panda · CLIP     │
+└─────────────────────────┴──────────────────────────────┘
+```
 
-2) Automatic Sorting:
+### Example Commands
 
+- `pick the red cube` — CLIP matches "red cube" across all 5 objects
+- `grab something blue` — fuzzy matching works
+- `pick yellow cylinder and place in green zone` — explicit zone override
+- `sort all objects by color` — auto-sorts everything into matching zones
+- `throw the green sphere` — picks and tosses it
 
-https://github.com/user-attachments/assets/93f907f5-6c96-4eb3-babd-b46292f15680
+---
 
+## Quick Start
+
+```bash
+git clone https://github.com/nirbhayborikar/CortexSort.git
+cd CortexSort
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+### Run the Web UI
+
+```bash
+python3 app.py # live simulation window with chatbot in left like "chatgpt"
+# Open http://localhost:5000 in your browser
+# http://192.168.178.25:5000 in your browser
+# fuser -k 5000/tcp #Run this to kill it and free the port: 
+```
+
+### Run the Terminal CLI (no browser needed)
+
+```bash
+python3 cortex_cli.py # when from terminal interaction needed
+```
+
+---
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A["User types:\npick red cube"] --> B["Flask /api/chat"]
+    B --> C["PyBullet Camera\ncapture + segmentation"]
+    C --> D["CLIP ViT-B/32\ntext-image similarity"]
+    D --> E["Select best match\nred_cube (0.41)"]
+    E --> F["IK → Pick → Place\nin color-matched zone"]
+    F --> G["MJPEG stream\nupdates live"]
+```
+
+1. **Capture** — PyBullet renders an 800x480 camera image with per-pixel segmentation masks
+2. **Crop** — Each object is isolated using its segmentation mask (white background, tight bbox)
+3. **Match** — CLIP computes cosine similarity between the text prompt and each object crop
+4. **Act** — The Panda arm uses inverse kinematics to pick the highest-scoring object and place it in the appropriate zone
+5. **Stream** — A background thread pushes JPEG frames at ~10 fps to the browser via MJPEG
+
+---
 
 ## Project Structure
 
 ```
-├── panda_vision_simulation.py             # Vision-guided robot simulation Class
-├── color_sorting_vlm.py                   # Color sorting and interactive demo with VLM
-├── simple_pick_place_demo.py              # Simple pick and place demo
-├── requirements.txt                       # Python dependencies
-└── README.md                              # This documentation
+CortexSort/
+├── app.py                  # Flask web server (chat API + MJPEG stream)
+├── cortex_engine.py        # PyBullet simulation + CLIP model (core class)
+├── cortex_cli.py           # Terminal-based interactive demo
+├── demo_pick_place.py      # Minimal pick-and-place without CLIP
+├── templates/
+│   └── index.html          # Split-panel chat + sim UI
+├── static/
+│   └── style.css           # Dark-theme styling
+├── media/                  # Demo videos and screenshots
+├── requirements.txt
+└── README.md
 ```
-
-## Features
-
-### Vision-Guided Robot Simulation
-- **Camera image capture** from PyBullet simulation
-- **Object detection** using 3D-to-2D projection and segmentation masks
-- **Vision-language matching** with **CLIP** for object selection
-- **Text-prompted pick and place** ("pick up the red cube")
-- **Multiple objects** (red cube, red sphere, blue cube, green sphere, yellow cylinder)
-- **Color sorting zones** with physical borders to prevent objects from falling
-- **Interactive zone selection and throw action** for object placement
-
-## Requirements
-
-### Basic Requirements (for robot simulation)
-- Python 3.7+
-- PyBullet
-- NumPy
-
-### Full Requirements (for vision integration)
-- All basic requirements plus:
-- PyTorch
-- Transformers (Hugging Face)
-- Pillow (PIL)
-- Matplotlib
-- Requests
-
-## Installation
-1. Clone or download this project:
-   ```bash
-   git clone https://github.com/nirbhayborikar/CortexSort.git
-   ```
-
-2. (Recommended) Create and activate a Python virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-
-## Usage
-
-### Color Sorting and Interactive Demo
-
-To run the color sorting and interactive demo:
-```bash
-python3 color_sorting_vlm.py
-```
-
-When you start the demo, you will be prompted to choose a mode:
-
-1. **Automatic Color Sorting**: The robot will automatically sort all objects into their matching colored zones.
-2. **Interactive Text Prompt**: You can enter text prompts to select which object the robot should pick up, and choose where to place it (including a "throw away" option).
-
-
-Follow the on-screen instructions to interact with the robot and sorting zones.
 
 ---
 
+## Scene Setup
 
+The simulation creates:
 
+- **5 objects**: red cube, red sphere, blue cube, green sphere, yellow cylinder
+- **4 color zones**: red (left-front), blue (left-back), green (right-front), yellow (right-back) — each with 3cm borders
+- **Franka Panda** 7-DOF arm with two-finger gripper, fixed base on table
 
+All objects are 5cm, 100g, sitting on a table at Z ≈ 0.65m.
+
+---
 
 ## Technical Details
 
-### CLIP Vision-Language Matching
+### CLIP Object Selection
 
-The robot uses CLIP to match images of objects to your text prompt:
-
-```python
-# For each object crop, CLIP returns a similarity score with the text prompt
-similarity_scores = model.compute_object_similarity(crops, text_prompt)
-selected_object, best_score = model.select_best_object(similarity_scores)
-# Robot picks and places the selected object
-```
-
-CLIP compares each cropped object image to your prompt (like "red cube") and returns a score for each. The robot picks the object with the highest score and moves it as you choose.
-
-### Inverse Kinematics
-
-The robot uses PyBullet's built-in inverse kinematics solver to calculate joint angles needed to reach target positions:
+For each object visible in the scene, PyBullet's segmentation mask gives a pixel-perfect crop. CLIP processes all crops against the user's text prompt in a single forward pass:
 
 ```python
-joint_positions = p.calculateInverseKinematics(
-    self.robot_id,
-    endEffectorLinkIndex=11,  # Panda end-effector link
-    targetPosition=target_position,
-    targetOrientation=target_orientation
-)
+scores = sim.compute_object_similarity(crops, "red cube")
+# → {'red_cube': 0.41, 'red_sphere': 0.23, 'blue_cube': 0.18, ...}
+selected, confidence = sim.select_best_object(scores)
+# → ('red_cube', 0.41)
 ```
 
 ### Robot Control
 
-Joint control uses position control mode:
-- **Position Control**: Joints move to target positions
-- **Gripper Control**: Two-finger gripper with synchronized motion
+- **Inverse Kinematics**: PyBullet IK solver targets end-effector link 11
+- **Safe Movement**: Waypoint-based trajectories that maintain minimum height during horizontal transit
+- **Gripper**: Position-controlled two-finger gripper (0.0 = closed, 0.04 = open)
 
-## Future Enhancements
+### Web Architecture
 
-Possible extensions to this project:
-- Integrate advanced object segmentation for more accurate identification.
-- Detect and localize area zones visually, not just by preset coordinates.
-- Enable multi-object reasoning for commands involving relationships (e.g., “Stack all blue cubes, then put the red sphere on top”).
+- Flask serves the HTML/CSS/JS frontend and two API endpoints
+- `/api/chat` — synchronous: processes one command at a time (sim is single-threaded)
+- `/api/video_feed` — MJPEG stream from a background frame-capture thread
+- Thread lock ensures PyBullet calls don't overlap between chat commands and frame capture
 
-## Resources
+---
 
-- [PyBullet Documentation](https://pybullet.org/)
-- [Panda Robot Specifications](https://www.franka.de/technology)
-- [Robotics and Physics Simulation Tutorial](https://pybullet.org/wordpress/)
+## Requirements
 
-## Contributing
+- Python 3.10+
+- NVIDIA GPU recommended (CLIP runs on CPU but is slower)
+- ~2 GB disk for CLIP model weights (downloaded on first run)
+- Tested on NVIDIA Jetson AGX Orin (JetPack 6.x) and Ubuntu 22.04
 
-Feel free to fork, modify, and submit PRs! Suggestions and improvements are welcome.
+---
+
+## Future Ideas
+
+- Swap CLIP for a larger VLM (SigLIP, BLIP-2) for better spatial reasoning
+- Add speech-to-text so you can talk to the robot
+- Multi-step planning: "stack all cubes, then put the sphere on top"
+- Record and replay demonstrations for imitation learning

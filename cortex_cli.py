@@ -15,10 +15,10 @@ Features:
 - Complete pick-and-place operations for each object
 
 Usage:
-    python3 color_sorting_vlm.py
+    python3 cortex_cli.py
 """
 
-from panda_vision_simulation import VisionLanguagePandaSimulation
+from cortex_engine import VisionLanguagePandaSimulation
 import pybullet as p
 import time
 import matplotlib.pyplot as plt

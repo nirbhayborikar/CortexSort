@@ -72,6 +72,7 @@ class VisionLanguagePandaSimulation:
         # Robot parameters
         self.gripper_open_position = 0.04
         self.gripper_close_position = 0.0
+        self.frame_callback = None  # set by app.py to push live frames
         
         # Camera parameters (wider resolution for better field of view)
         self.camera_position = [0.8, 0.0, 1.2]  # Camera position above the table
@@ -392,15 +393,17 @@ class VisionLanguagePandaSimulation:
             width=self.camera_width,
             height=self.camera_height,
             viewMatrix=view_matrix,
-            projectionMatrix=projection_matrix
+            projectionMatrix=projection_matrix,
+            renderer=p.ER_TINY_RENDERER
         )
-        
-        # Convert to PIL Image (remove alpha channel)
+
+        # In DIRECT mode getCameraImage returns a flat tuple — convert to numpy
+        rgb_array = np.array(rgb_array, dtype=np.uint8).reshape(height, width, 4)
         rgb_array = rgb_array[:, :, :3]  # Remove alpha channel
         image = Image.fromarray(rgb_array, 'RGB')
-        
+
         return image
-        
+
     def capture_camera_image_with_segmentation(self):
         """
         Capture an image from the robot's perspective with segmentation data.
@@ -428,13 +431,17 @@ class VisionLanguagePandaSimulation:
             width=self.camera_width,
             height=self.camera_height,
             viewMatrix=view_matrix,
-            projectionMatrix=projection_matrix
+            projectionMatrix=projection_matrix,
+            renderer=p.ER_TINY_RENDERER
         )
-        
-        # Convert to PIL Image (remove alpha channel)
+
+        # In DIRECT mode getCameraImage returns flat tuples — convert to numpy
+        rgb_array = np.array(rgb_array, dtype=np.uint8).reshape(height, width, 4)
         rgb_array = rgb_array[:, :, :3]  # Remove alpha channel
         image = Image.fromarray(rgb_array, 'RGB')
-        
+        depth_array = np.array(depth_array, dtype=np.float32).reshape(height, width)
+        seg_array = np.array(seg_array, dtype=np.int32).reshape(height, width)
+
         return image, depth_array, seg_array
         
     def get_object_bounding_boxes(self, image):
@@ -716,9 +723,11 @@ class VisionLanguagePandaSimulation:
                                   targetPosition=initial_joint_positions[i],
                                   force=500)
         
-        for _ in range(480):
+        for i in range(480):
             p.stepSimulation()
             time.sleep(1./240.)
+            if i % 24 == 0 and self.frame_callback:
+                self.frame_callback()
             
         print("Robot set to initial safe pose")
         
@@ -805,18 +814,24 @@ class VisionLanguagePandaSimulation:
                               maxVelocity=0.5)
         
         # Wait for gripper to reach position
-        for _ in range(120):  # 0.5 seconds
+        for i in range(120):  # 0.5 seconds
             p.stepSimulation()
             time.sleep(1./240.)
+            if i % 24 == 0 and self.frame_callback:
+                self.frame_callback()
         
     def wait_for_movement(self, timeout=5.0):
         """Wait for robot movement to complete."""
         start_time = time.time()
-        
+        step = 0
+
         while time.time() - start_time < timeout:
             p.stepSimulation()
             time.sleep(1./240.)
-            
+            step += 1
+            if step % 24 == 0 and self.frame_callback:
+                self.frame_callback()
+
             if time.time() - start_time > 3.0:
                 break
                 
