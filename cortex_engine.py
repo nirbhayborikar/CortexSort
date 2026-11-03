@@ -73,6 +73,8 @@ class VisionLanguagePandaSimulation:
         self.gripper_open_position = 0.04
         self.gripper_close_position = 0.0
         self.frame_callback = None  # set by app.py to push live frames
+        self.grasp_constraint = None
+        self.grasped_object_id = None
         
         # Camera parameters (wider resolution for better field of view)
         self.camera_width = 800
@@ -853,58 +855,81 @@ class VisionLanguagePandaSimulation:
                 
     def pick_object(self, object_name):
         """
-        Pick up a specific object.
-        
+        Pick up a specific object using a constraint-based grasp.
+
         Args:
             object_name (str): Name of the object to pick
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
         if object_name not in self.objects:
             print(f"Object '{object_name}' not found!")
             return False
-            
+
+        self.release_grasp()
+
         obj_info = self.objects[object_name]
-        obj_pos, _ = p.getBasePositionAndOrientation(obj_info['id'])
-        
+        obj_id = obj_info['id']
+        obj_pos, obj_orn = p.getBasePositionAndOrientation(obj_id)
+
         print(f"Picking up {object_name} at position {obj_pos}")
         print(f"Object height: {obj_pos[2]:.3f}m, Object size: {obj_info['config']['size']:.3f}m")
-        
-        # Move to home position first
-        print("Moving to home position...")
+
         self.move_to_position(self.home_position)
-        
-        # Open gripper
-        print("Opening gripper...")
         self.control_gripper(self.gripper_open_position)
-        
-        # Approach object from above (higher to avoid collisions)
-        print(f"Approaching {object_name}...")
-        approach_pos = [obj_pos[0], obj_pos[1], obj_pos[2] + 0.25]  # Increased from 0.15 to 0.25
-        self.move_to_position(approach_pos)
-        
-        # Lower to object - go down to the actual object surface level
-        print(f"Lowering to {object_name}...")
-        pick_pos = [obj_pos[0], obj_pos[1], obj_pos[2] + 0.01]  # Much closer to object surface
+
+        approach_pos = [obj_pos[0], obj_pos[1], obj_pos[2] + 0.25]
+        self.safe_move_to_position(approach_pos)
+
+        pick_pos = [obj_pos[0], obj_pos[1], obj_pos[2] + 0.01]
         self.move_to_position(pick_pos)
-        
-        # Close gripper
-        print(f"Grasping {object_name}...")
+
         self.control_gripper(self.gripper_close_position)
-        
-        # Wait a moment to ensure good grip
-        print("Ensuring secure grip...")
-        for _ in range(60):  # Quarter second pause
+
+        for _ in range(60):
             p.stepSimulation()
             time.sleep(1./240.)
-        
-        # Lift object higher to avoid table collisions during transport
-        print(f"Lifting {object_name}...")
-        lift_pos = [obj_pos[0], obj_pos[1], obj_pos[2] + 0.30]  # Increased from 0.15 to 0.30
+
+        ee_state = p.getLinkState(self.robot_id, 11)
+        ee_pos, ee_orn = ee_state[0], ee_state[1]
+        obj_pos_now, obj_orn_now = p.getBasePositionAndOrientation(obj_id)
+        inv_pos, inv_orn = p.invertTransform(ee_pos, ee_orn)
+        rel_pos, rel_orn = p.multiplyTransforms(inv_pos, inv_orn, obj_pos_now, obj_orn_now)
+
+        self.grasp_constraint = p.createConstraint(
+            self.robot_id, 11,
+            obj_id, -1,
+            p.JOINT_FIXED,
+            [0, 0, 0],
+            rel_pos,
+            [0, 0, 0],
+            childFrameOrientation=rel_orn,
+        )
+        p.changeConstraint(self.grasp_constraint, maxForce=500)
+        self.grasped_object_id = obj_id
+
+        print(f"Constraint grasp created for {object_name}")
+
+        lift_pos = [obj_pos[0], obj_pos[1], obj_pos[2] + 0.30]
         self.move_to_position(lift_pos)
-        
+
+        new_pos, _ = p.getBasePositionAndOrientation(obj_id)
+        if new_pos[2] < obj_pos[2] + 0.05:
+            print(f"WARNING: grip verification failed for {object_name}")
+            self.release_grasp()
+            return False
+
+        print(f"Grip verified — {object_name} lifted to z={new_pos[2]:.3f}")
         return True
+
+    def release_grasp(self):
+        """Remove the grasp constraint and open the gripper."""
+        if self.grasp_constraint is not None:
+            p.removeConstraint(self.grasp_constraint)
+            self.grasp_constraint = None
+            self.grasped_object_id = None
+        self.control_gripper(self.gripper_open_position)
         
     def place_object(self):
         """Place the currently held object at the predefined place position."""
@@ -918,12 +943,10 @@ class VisionLanguagePandaSimulation:
         place_target = [self.place_position[0], self.place_position[1], self.place_position[2] + 0.05]  # Higher placement
         self.move_to_position(place_target)
         
-        # Release object
         print("Releasing object...")
-        self.control_gripper(self.gripper_open_position)
-        
-        # Retreat with extra height
-        retreat_pos = [self.place_position[0], self.place_position[1], self.place_position[2] + 0.20]  # Higher retreat
+        self.release_grasp()
+
+        retreat_pos = [self.place_position[0], self.place_position[1], self.place_position[2] + 0.20]
         self.move_to_position(retreat_pos)
         
         # Return to home
@@ -971,9 +994,8 @@ class VisionLanguagePandaSimulation:
         zone_target = [zone_position[0], zone_position[1], zone_position[2] + 0.05]  # Higher above zone
         self.move_to_position(zone_target)
         
-        # Release object
         print(f"   Releasing {object_name} in {zone_color} zone...")
-        self.control_gripper(self.gripper_open_position)
+        self.release_grasp()
         
         # Retreat with extra height using safe movement
         retreat_pos = [zone_position[0], zone_position[1], zone_position[2] + 0.25]  # Increased from 0.20 to 0.25

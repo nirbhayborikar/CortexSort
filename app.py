@@ -122,6 +122,8 @@ def reset():
     """Reset the simulation to its initial state."""
     sim_ready.wait()
     with sim_lock:
+        sim.grasp_constraint = None
+        sim.grasped_object_id = None
         p.resetSimulation()
         sim.objects = {}
         sim.setup_simulation()
@@ -165,8 +167,8 @@ def _handle_command(text: str) -> dict:
 
     # --- stop / emergency ---
     if lower in ("stop", "halt", "freeze", "emergency stop"):
+        sim.release_grasp()
         sim.set_initial_robot_pose()
-        sim.control_gripper(sim.gripper_open_position)
         return {"reply": "Robot **stopped** and returned to safe pose. (Any held object was released.)"}
 
     # --- camera switch via chat ---
@@ -249,9 +251,8 @@ def _parse_zone(text: str):
 def _place_in_zone(obj_name: str, zone: str):
     """Place held object into the requested zone."""
     if zone == "__throw__":
-        # quick toss
         sim.move_to_position([-0.3, 0.5, 0.8])
-        sim.control_gripper(sim.gripper_open_position)
+        sim.release_grasp()
         sim.move_to_position(sim.home_position)
         return
 
@@ -263,7 +264,7 @@ def _place_in_zone(obj_name: str, zone: str):
     zp = zc["position"]
     sim.safe_move_to_position([zp[0], zp[1], zp[2] + 0.25])
     sim.move_to_position([zp[0], zp[1], zp[2] + 0.05])
-    sim.control_gripper(sim.gripper_open_position)
+    sim.release_grasp()
     sim.move_to_position([zp[0], zp[1], zp[2] + 0.25])
     sim.move_to_position(sim.home_position)
 
@@ -290,14 +291,14 @@ def _do_cross_basket_transfer(transfer: dict, original_text: str) -> dict:
     if from_zone not in sim.sorting_zones or to_zone not in sim.sorting_zones:
         return {"reply": f"Unknown zone. Available: red, blue, green, yellow."}
 
-    # Find which objects are currently in the source zone
     src_pos = sim.sorting_zones[from_zone]["position"]
     candidates = []
     for obj_name, obj_info in sim.objects.items():
         obj_pos, _ = p.getBasePositionAndOrientation(obj_info["id"])
         dx = abs(obj_pos[0] - src_pos[0])
         dy = abs(obj_pos[1] - src_pos[1])
-        if dx < 0.12 and dy < 0.12:
+        print(f"  [zone-scan] {obj_name} at ({obj_pos[0]:.3f}, {obj_pos[1]:.3f}) dx={dx:.3f} dy={dy:.3f}")
+        if dx < 0.18 and dy < 0.18:
             candidates.append((obj_name, obj_pos))
 
     if not candidates:
